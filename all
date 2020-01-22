@@ -1,0 +1,17 @@
+# Here are variables related to the ICP installation
+
+cleanup_image: false
+stage: edge
+code_repository: https://token:<token>@github.ibm.com/IBMPrivateCloud/installer.git
+code_directory: /root/src/source/installer
+
+version: latest 
+image_repo: hyc-cloud-private-{{ stage }}-docker-local.artifactory.swg-devops.com/ibmcom-amd64
+private_registry_server: hyc-cloud-private-{{ stage }}-docker-local.artifactory.swg-devops.com
+docker_username: xlhuxa@cn.ibm.com
+docker_password: <docker_password> 
+my_chart_repo:
+  chart_repo:
+    addons:
+      url: "https://na.artifactory.swg-devops.com/artifactory/ui/artifactactions/downloadfolder?repoKey=hyc-cloud-private-{{ stage }}-helm-local&path=latest&archiveType=tgz&includeChecksumFiles=false"
+      header: "X-JFrog-Art-Api: <token>"
