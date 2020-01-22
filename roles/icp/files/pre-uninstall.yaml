@@ -1,0 +1,5 @@
+---
+
+  - name: test
+    debug: msg="just a test for pre uninstall actions"
+

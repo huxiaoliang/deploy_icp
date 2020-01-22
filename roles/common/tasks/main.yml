@@ -1,0 +1,46 @@
+---
+
+  - name: install python-pip on CentOS 
+    yum:
+      name: python-pip
+      state: present
+    when: ansible_distribution == 'CentOS'
+
+  - name: install python-pip on Ubuntu
+    apt:
+      name: python-pip
+      state: present
+    when: ansible_distribution == 'Ubuntu'
+
+  - name: install python-pip on RedHat
+    shell: |
+       yum -y install epel-release
+       yum install -y python-pip
+       pip install --upgrade pip
+       yum install -y python34-setuptools
+       easy_install-3.4 pip
+    when: ansible_distribution == 'RedHat'
+
+  - name: install python-pip
+    shell: |
+     apt-get update
+     apt-get install -y python-pip
+    when: ansible_distribution == 'Ubuntu'
+
+  - name: install docker-py by python-pip
+    pip:
+      name: "{{ item }}"
+      state: present
+    with_items:
+      - docker-py
+      - six
+    environment:
+      http_proxy: "{{ http_proxy }}"
+      https_proxy: "{{ http_proxy }}"
+
+  - name: login to private registry
+    docker_login:
+      registry: "{{ image_repo }}"
+      email: docker@docker.io
+      username: "{{ docker_username }}"
+      password: "{{ docker_password }}"

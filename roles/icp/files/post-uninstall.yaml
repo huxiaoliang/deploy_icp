@@ -1,0 +1,10 @@
+---
+
+- name: clean latest image
+  shell: |
+    docker rmi -f $(docker images |grep -v "inception" | awk '{print $3}')
+    #docker rmi -f $(docker images | grep 'latest' |grep -v "inception" | awk '{print $3}')
+    #docker rmi -f $(docker images -q -f dangling=true)
+  when: cleanup_image == "true"
+  ignore_errors: yes
+

@@ -1,0 +1,122 @@
+---
+
+  - name: set image repo
+    shell: |
+      if [ "{{ stage }}" == "integration" ]; then
+        echo "hyc-cloud-private-{{ stage }}-docker-local.artifactory.swg-devops.com/ibmcom"
+      else
+        echo "hyc-cloud-private-{{ stage }}-docker-local.artifactory.swg-devops.com/ibmcom-amd64"
+      fi
+    args:
+      executable: /bin/bash
+    register: image_repo
+
+  - name: set inception image
+    shell: |
+      if [ "{{ stage }}" == "integration" ]; then
+        echo "icp-inception-amd64"
+      else
+        echo "icp-inception"
+      fi
+    args:
+      executable: /bin/bash
+    register: inception
+  
+  - name: judge a file or dir is exits
+    shell: ls {{ code_directory }}
+    ignore_errors: True
+    register: result
+  
+  - name: git clone icp installer code from repository
+    git: repo={{ code_repository }} dest={{ code_directory }}
+    when: result|failed
+    environment:
+      http_proxy: "{{ http_proxy }}"
+      https_proxy: "{{ http_proxy }}"
+
+#  - name: enable ansible timestamp in log
+#    get_url:
+#      url: https://raw.githubusercontent.com/ginsys/ansible-plugins/devel/callback_plugins/timestamp.py
+#      dest: "{{ code_directory }}/plugins/callback"
+#    environment:
+#      http_proxy: "{{ http_proxy }}"
+#      https_proxy: "{{ http_proxy }}"
+
+  - name: copy post-install.yaml to installer 
+    copy: src=post-install.yaml dest={{ code_directory }}/playbook mode=0755
+
+  - name: copy post-uninstall.yaml to installer
+    copy: src=post-uninstall.yaml dest={{ code_directory }}/playbook/roles/uninstall/tasks mode=0755
+
+  - name: copy pre-install.yaml to installer 
+    copy: src=pre-install.yaml dest={{ code_directory }}/playbook mode=0755
+
+  - name: copy pre-uninstall.yaml to installer
+    copy: src=pre-uninstall.yaml dest={{ code_directory }}/playbook/roles/uninstall/tasks mode=0755
+
+  - name: include post-install and post-uninstall logic to installer 
+    shell: |
+      sed '/---/a\\n- include: pre-install.yaml' -i {{ code_directory }}/playbook/install.yaml
+      sed '/---/a\\n- include: pre-uninstall.yaml' -i {{ code_directory }}/playbook/roles/uninstall/tasks/main.yaml
+      echo "" >> {{ code_directory }}/playbook/install.yaml
+      echo "- include: post-install.yaml" >> {{ code_directory }}/playbook/install.yaml
+      echo "" >> {{ code_directory }}/playbook/roles/uninstall/tasks/main.yaml
+      echo "- include: post-uninstall.yaml" >> {{ code_directory }}/playbook/roles/uninstall/tasks/main.yaml
+
+  - name: set tiller http proxy to installer
+    shell: |
+      echo "tiller_http_proxy: {{ http_proxy }}" >> {{ code_directory }}/cluster/config.yaml
+      echo "tiller_https_proxy: {{ http_proxy }}" >> {{ code_directory }}/cluster/config.yaml
+    when: "http_proxy|d()"
+
+  - name: copy license files
+    docker_container:
+      name: inception
+      image: "{{ image_repo.stdout }}/{{ inception.stdout }}:{{ version }}"
+      network_mode: host
+      detach: False
+      state: started
+      volumes: "{{ code_directory }}/:/data"
+      env:
+        LICENSE: accept
+      command: cp -a cfc-files/ /data
+
+  - name: copy ssh key
+    shell: \cp /root/.ssh/id_rsa {{ code_directory }}/cluster/ssh_key
+   
+  - name: customize the configuration parameter by config.yaml
+    shell: |
+      echo "proxy_access_ip: {{ inventory_hostname }}" >> {{ code_directory }}/cluster/config.yaml
+      echo "cluster_access_ip: {{ inventory_hostname }}" >> {{ code_directory }}/cluster/config.yaml
+      echo "version: {{version}}" >> {{ code_directory }}/cluster/config.yaml
+      echo "image_repo: {{ image_repo.stdout }}" >> {{ code_directory }}/cluster/config.yaml
+      echo "private_registry_enabled: true" >> {{ code_directory }}/cluster/config.yaml
+      echo "private_registry_server: {{private_registry_server}}" >> {{ code_directory }}/cluster/config.yaml
+      echo "docker_username: {{docker_username}}" >> {{ code_directory }}/cluster/config.yaml
+      echo "docker_password: {{docker_password}}" >> {{ code_directory }}/cluster/config.yaml
+      echo "{{ my_chart_repo | to_nice_yaml(indent=2) }}" >> {{ code_directory }}/cluster/config.yaml
+      echo "default_admin_password: admin" >> {{ code_directory }}/cluster/config.yaml
+      echo "password_rules:" >> {{ code_directory }}/cluster/config.yaml
+      echo "  - '(.*)'" >> {{ code_directory }}/cluster/config.yaml
+
+  - name: generate cluster hosts file
+    template: src=hosts.j2 dest={{ code_directory }}/cluster/hosts mode=0644
+
+  - name: installing icp
+    docker_container:
+      name: inception
+      image: "{{ image_repo.stdout }}/{{ inception.stdout }}:{{ version }}"
+      network_mode: host
+      detach: False
+      interactive: true
+      pull: true
+      state: started
+      volumes:
+        - "{{ code_directory }}/:/installer"
+        - "/root/.ssh:/root/.ssh"
+      env:
+        LICENSE: accept
+        http_proxy: "{{ http_proxy }}"
+        https_proxy: "{{ http_proxy }}"
+        no_proxy: "mycluster.icp,192.168.122.163,localhost,127.0.0.1"
+      command: install

@@ -1,0 +1,37 @@
+---
+# This playbook uninstall an icp cluster
+
+- hosts: boot-nodes
+  remote_user: root
+  become: yes
+  become_method: sudo
+  roles:
+    - common
+
+  tasks:
+
+#  - name: clean inception image
+#    shell: |
+#      docker rmi -f $(docker images |grep "inception" | awk '{print $3}')
+#    when: cleanup_image == "true"
+#    ignore_errors: yes
+
+  - name: uninstall icp
+    docker_container:
+      name: uninception
+      image: "{{ image_repo }}/icp-inception:{{ version }}"
+      network_mode: host
+      interactive: true
+      detach: False
+      state: started
+      volumes:
+        - "{{ code_directory }}/:/installer"
+        - "/root/.ssh:/root/.ssh"
+      env:
+        LICENSE: accept
+      command: uninstall --extra-vars "cleanup_image={{ cleanup_image }}"
+
+  - name: Removing code directory and files
+    file: path={{ item }} state=absent
+    with_items:
+      -  "{{ code_directory }}"

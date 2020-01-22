@@ -1,0 +1,9 @@
+---
+
+- name: performing pre install actions
+  hosts: all
+
+  tasks:
+
+  - name: test
+    debug: msg="just a test for pre install actions"
